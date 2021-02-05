@@ -1,26 +1,66 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 
-from skimage.transform import radon, iradon
+from skimage.draw import circle as cir
+from skimage.metrics.simple_metrics import mean_squared_error
+from skimage.transform import radon, rescale, iradon
 
-def SIRT(img, sinogram, alpha=0.1, niter=1e2):
+from tqdm import tqdm_notebook as tqdm
+
+def SIRT(image, sinogram, theta, circle=True, alpha=0.1, n_iter=1e2, init=None):
     
-    THETA = np.linspace(0., 180., 400, endpoint=False)
+    """
+    image 再構成画像
+    sinogram 投影データ
+    theta 投影角度
+    n_iter イテレーション
+    """
     
     # initial
-    image = np.ones(img.shape) / 2
+    if init is None:
+        if circle==True:
+            recon = np.zeros(image.shape)
+            rr, cc = cir(image.shape[0] / 2, image.shape[1] / 2, image.shape[0] / 2 - 1)
+            recon[rr, cc] = 1
+        else:
+            recon = np.ones(image.shape)
+    else:
+        recon = init
     
-    for i in range(int(niter)):
-        predict_img = radon(image, THETA, circle=True)
-        image = image + alpha * iradon(sinogram - predict_img, THETA, circle=True)
+    mse = []
+    
+    for iter in tqdm(range(n_iter), desc="sirt iter", leave=False):
+        predict_image = radon(recon, theta, circle=circle)
+        recon = recon + alpha * iradon(sinogram - predict_image, theta, circle=circle)
         
-        image[image < 0] = 0
-        image[image > 1] = 1
+        recon[recon < 0] = 0
+        recon[recon > 1] = 1
         
-        plt.imshow(image)
+        if iter > 0 : 
+            mse.append(mean_squared_error(recon, image))
+        
+        # make dir
+        make_dir("result")
+        make_dir("result/recon")
+        make_dir("result/recon/sirt")
+        make_dir("result/mse")
+
+        # plot
+        plt.imshow(recon)
         plt.colorbar()
-        plt.title("%d / %d" % (i + 1, niter))
+        plt.title("sirt recon, iteration: %d" % (iter + 1))
+        
+        # save
+        filename = "./result/recon/sirt/recon_sirt_iter"+str(iter+1).zfill(3)+".png"
+        plt.savefig(filename)
         plt.pause(1)
         plt.close()
-    
-    return image
+        
+    np.save("./result/mse/mse_sirt.npy", mse)
+
+    return recon
+
+def make_dir(DIR_PATH):
+    if not os.path.exists(DIR_PATH):
+        os.makedirs(DIR_PATH)

@@ -10,11 +10,11 @@ from skimage.transform import radon, rescale, iradon
 
 from tqdm import tqdm_notebook as tqdm
 
-def OSEM_TV(image, sinogram, theta, circle=True, n_iter=10, n_sub=1, init=None):
-   
+def ART_TV(image, sinogram, theta, circle=True, n_iter=10, alpha = 0.001, init=None):
+    
     """
-    image 再構成画像
-    sinogram 投影データ
+    img 再構成画像
+    image 投影データ
     theta 投影角度
     n_iter イテレーション
     """
@@ -31,6 +31,7 @@ def OSEM_TV(image, sinogram, theta, circle=True, n_iter=10, n_sub=1, init=None):
         recon = np.copy(init)
 
     # normalization matrix
+    n_sub = len(theta)
     nview = len(theta)
     norm = np.ones(sinogram.shape)
     wgts = []
@@ -38,44 +39,43 @@ def OSEM_TV(image, sinogram, theta, circle=True, n_iter=10, n_sub=1, init=None):
         views = range(sub, nview, n_sub)
         wgt = iradon(norm[:, views], theta=theta[views], filter=None, circle=circle)
         wgts.append(wgt)
-    
+
     mse = []
-    
+
     # iteration
-    for iter in tqdm(range(n_iter), desc="osem iter", leave=False):
+    for iter in tqdm(range(n_iter), desc="art iter", leave=False):
         order = np.random.permutation(range(n_sub))
-        for sub in tqdm(order, desc="osem sub", leave=False):
+        for sub in tqdm(order, desc="art sub", leave=False):
             views = range(sub, nview, n_sub)
             fp = radon(recon, theta=theta[views], circle=circle)
-            ratio = sinogram[:, views] / (fp + 1e-6)
-            bp = iradon_TV(ratio, recon, theta=theta[views], filter=None, circle=circle)
-            recon *= bp / (wgts[sub] + 1e-6)
-#         print("osem tv loop"+str(iter))
+            diff = sinogram[:, views] - fp
+            bp = iradon(diff, theta=theta[views], filter=None, circle=circle) 
+            recon += alpha * bp / (wgts[sub] + 1e-6)
+#             ratio = sinogram[:, views] / (fp + 1e-6)
+#             bp = iradon_TV(ratio, recon, theta=theta[views], filter=None, circle=circle) 
+#             recon *= bp / (wgts[sub] + 1e-6)        
+            
         if iter > 0 : 
-            #recon_sai = OSEM_sai(img= img, image =  image,theta=theta,n_iter = iter-1,n_sub = 1)
-            #mse.append(compare_mse(recon_sai,np.array(recon)))
             mse.append(mean_squared_error(recon, image))
-            #psnr.append(compare_psnr(recon_sai,recon))
-            #ssim.append(compare_ssim(recon_sai,recon))
-    
+            
         # make dir
         make_dir("result")
         make_dir("result/recon")
-        make_dir("result/recon/osem_TV")
+        make_dir("result/recon/art_TV")
         make_dir("result/mse")
 
         # plot
         plt.imshow(recon)
         plt.colorbar()
-        plt.title("osem TV recon, iteration: %d" % (iter + 1))
+        plt.title("art TV recon, iteration: %d" % (iter + 1))
         
         # save
-        filename = "./result/recon/osem_TV/recon_osem_TV_iter"+str(iter+1).zfill(3)+".png"
+        filename = "./result/recon/art_TV/recon_art_TV_iter"+str(iter+1).zfill(3)+".png"
         plt.savefig(filename)
         plt.pause(1)
         plt.close()
         
-    np.save("./result/mse/mse_osem_TV.npy", mse)
+    np.save("./result/mse/mse_art_TV.npy", mse)
 
     return recon
 
